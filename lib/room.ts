@@ -1,4 +1,6 @@
 import {
+  addDoc,
+  collection,
   doc,
   onSnapshot,
   runTransaction,
@@ -10,7 +12,7 @@ import {
 import { DEFAULT_DECK, DeckItem } from "@/lib/deck";
 import { db } from "@/lib/firebase";
 
-export type RoomStatus = "lobby" | "decide" | "wheel" | "share";
+export type RoomStatus = "lobby" | "decide" | "final_vote" | "wheel" | "share";
 export type VoteValue = "yes" | "no";
 
 export type RoomMember = {
@@ -33,10 +35,32 @@ export type RoomDoc = {
   currentIndex: number;
   matchedItemId?: string;
   wheelWinner?: WheelWinner;
+  finalCandidates?: string[];
+  finalVotes?: Record<string, Record<string, boolean>>;
 };
 
 function roomRef(roomId: string) {
   return doc(db, "rooms", roomId);
+}
+
+async function logEvent(type: string, roomId: string, memberId?: string) {
+  await addDoc(collection(db, "events"), {
+    type,
+    roomId,
+    memberId: memberId || null,
+    at: serverTimestamp()
+  });
+}
+
+function buildTopCandidates(room: RoomDoc) {
+  const totals = room.deck.map((item) => {
+    const itemVotes = room.votes?.[item.id] ?? {};
+    const yesCount = Object.values(itemVotes).filter((v) => v === "yes").length;
+    return { itemId: item.id, yesCount };
+  });
+
+  totals.sort((a, b) => b.yesCount - a.yesCount);
+  return totals.slice(0, 3).map((x) => x.itemId);
 }
 
 export async function createRoom(roomId: string, member: RoomMember) {
@@ -47,8 +71,12 @@ export async function createRoom(roomId: string, member: RoomMember) {
     members: [member],
     deck: DEFAULT_DECK,
     votes: {},
-    currentIndex: 0
+    currentIndex: 0,
+    finalCandidates: [],
+    finalVotes: {}
   } satisfies RoomDoc);
+
+  await logEvent("room_created", roomId, member.memberId);
 }
 
 export async function joinRoom(roomId: string, member: RoomMember) {
@@ -67,8 +95,17 @@ export async function joinRoom(roomId: string, member: RoomMember) {
   });
 }
 
-export async function startRoom(roomId: string) {
-  await updateDoc(roomRef(roomId), { status: "decide" });
+export async function startRoom(roomId: string, memberId?: string) {
+  await updateDoc(roomRef(roomId), {
+    status: "decide",
+    currentIndex: 0,
+    matchedItemId: null,
+    wheelWinner: null,
+    finalCandidates: [],
+    finalVotes: {}
+  });
+
+  await logEvent("room_started", roomId, memberId);
 }
 
 export async function submitVote(params: {
@@ -78,6 +115,8 @@ export async function submitVote(params: {
   vote: VoteValue;
 }) {
   const { roomId, memberId, itemId, vote } = params;
+
+  let didMatch = false;
 
   await runTransaction(db, async (tx) => {
     const ref = roomRef(roomId);
@@ -100,6 +139,7 @@ export async function submitVote(params: {
         : memberCount > 0 && yesCount >= Math.ceil(memberCount * 0.6);
 
     if (matched) {
+      didMatch = true;
       tx.update(ref, {
         votes,
         matchedItemId: itemId,
@@ -110,6 +150,18 @@ export async function submitVote(params: {
 
     const currentItemId = room.deck[room.currentIndex]?.id;
     const hasAnyVoteForCurrent = !!(currentItemId && votes[currentItemId]?.[memberId]);
+    const isLastItem = room.currentIndex >= room.deck.length - 1;
+
+    if (hasAnyVoteForCurrent && isLastItem) {
+      tx.update(ref, {
+        votes,
+        status: "final_vote",
+        finalCandidates: buildTopCandidates({ ...room, votes }),
+        finalVotes: {}
+      });
+      return;
+    }
+
     const nextIndex = hasAnyVoteForCurrent
       ? Math.min(room.currentIndex + 1, room.deck.length - 1)
       : room.currentIndex;
@@ -119,9 +171,52 @@ export async function submitVote(params: {
       currentIndex: nextIndex
     });
   });
+
+  if (didMatch) {
+    await logEvent("match_found", roomId, memberId);
+  }
 }
 
-export async function spinWheel(roomId: string) {
+export async function submitFinalVote(params: { roomId: string; memberId: string; itemId: string }) {
+  const { roomId, memberId, itemId } = params;
+
+  let didMatch = false;
+
+  await runTransaction(db, async (tx) => {
+    const ref = roomRef(roomId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) return;
+    const room = snap.data() as RoomDoc;
+    if (room.status !== "final_vote") return;
+
+    const finalVotes = room.finalVotes ?? {};
+    const currentItemVotes = finalVotes[itemId] ?? {};
+    currentItemVotes[memberId] = true;
+    finalVotes[itemId] = currentItemVotes;
+
+    const memberCount = room.members.length;
+    const yesCount = Object.keys(currentItemVotes).length;
+    const threshold = Math.ceil(memberCount * 0.6);
+
+    if (memberCount > 0 && yesCount >= threshold) {
+      didMatch = true;
+      tx.update(ref, {
+        finalVotes,
+        matchedItemId: itemId,
+        status: "wheel"
+      });
+      return;
+    }
+
+    tx.update(ref, { finalVotes });
+  });
+
+  if (didMatch) {
+    await logEvent("match_found", roomId, memberId);
+  }
+}
+
+export async function spinWheel(roomId: string, memberId?: string) {
   await runTransaction(db, async (tx) => {
     const ref = roomRef(roomId);
     const snap = await tx.get(ref);
@@ -136,6 +231,12 @@ export async function spinWheel(roomId: string) {
       status: "share"
     });
   });
+
+  await logEvent("wheel_spun", roomId, memberId);
+}
+
+export async function trackShare(roomId: string, memberId?: string) {
+  await logEvent("shared", roomId, memberId);
 }
 
 export async function newRound(roomId: string) {
@@ -144,7 +245,9 @@ export async function newRound(roomId: string) {
     votes: {},
     currentIndex: 0,
     matchedItemId: null,
-    wheelWinner: null
+    wheelWinner: null,
+    finalCandidates: [],
+    finalVotes: {}
   });
 }
 
