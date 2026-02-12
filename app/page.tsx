@@ -2,75 +2,60 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createRoom, joinRoom } from "@/lib/room";
-
-function makeId(prefix: string) {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
-  }
-  return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
-}
+import { generatePlan } from "@/lib/plan-data";
 
 export default function HomePage() {
   const router = useRouter();
-  const [nickname, setNickname] = useState("");
-  const [roomId, setRoomId] = useState("");
+  const [city, setCity] = useState("");
+  const [groupSize, setGroupSize] = useState("4");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
 
-  async function handleCreate() {
-    if (!nickname.trim()) return setError("Please enter nickname");
-    setLoading(true);
+  function onGenerate() {
     setError("");
-    try {
-      const newRoomId = makeId("room");
-      const memberId = makeId("member");
-      localStorage.setItem("squadSwipe.memberId", memberId);
-      localStorage.setItem("squadSwipe.nickname", nickname.trim());
-      await createRoom(newRoomId, memberId, nickname.trim());
-      router.push(`/room/${newRoomId}`);
-    } catch {
-      setError("Could not create room");
-    } finally {
-      setLoading(false);
-    }
-  }
+    const size = Number(groupSize);
 
-  async function handleJoin() {
-    if (!nickname.trim()) return setError("Please enter nickname");
-    if (!roomId.trim()) return setError("Please enter room id");
-    setLoading(true);
-    setError("");
-    try {
-      const memberId = makeId("member");
-      localStorage.setItem("squadSwipe.memberId", memberId);
-      localStorage.setItem("squadSwipe.nickname", nickname.trim());
-      await joinRoom(roomId.trim(), memberId, nickname.trim());
-      router.push(`/room/${roomId.trim()}`);
-    } catch {
-      setError("Could not join room");
-    } finally {
-      setLoading(false);
+    if (!Number.isFinite(size) || size < 2 || size > 50) {
+      setError("Group size must be between 2 and 50.");
+      return;
     }
+
+    const plan = generatePlan(city, size);
+    sessionStorage.setItem("planMixer.latestPlan", JSON.stringify(plan));
+    router.push("/result");
   }
 
   return (
     <main>
-      <h1>SQUAD SWIPE</h1>
-      <p className="small">Pick as a team, fast.</p>
+      <h1>PLAN MIXER</h1>
+      <p className="small">Instant group plans in one tap.</p>
+
       <div className="card">
-        <label>Nickname</label>
-        <input value={nickname} onChange={(e) => setNickname(e.target.value)} />
-        <div style={{ height: 10 }} />
-        <button className="btn-primary" onClick={handleCreate} disabled={loading}>Create Room</button>
+        <label>City (optional)</label>
+        <input
+          placeholder="Istanbul"
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+        />
+
+        <div style={{ height: 12 }} />
+
+        <label>Group Size</label>
+        <input
+          type="number"
+          min={2}
+          max={50}
+          value={groupSize}
+          onChange={(e) => setGroupSize(e.target.value)}
+        />
+
+        <div style={{ height: 14 }} />
+
+        <button className="btn-primary" onClick={onGenerate}>
+          Generate Plan
+        </button>
+
+        {error ? <p style={{ color: "#fca5a5" }}>{error}</p> : null}
       </div>
-      <div className="card">
-        <label>Room ID</label>
-        <input value={roomId} onChange={(e) => setRoomId(e.target.value)} />
-        <div style={{ height: 10 }} />
-        <button className="btn-neutral" onClick={handleJoin} disabled={loading}>Join Room</button>
-      </div>
-      {error ? <p style={{ color: "#fca5a5" }}>{error}</p> : null}
     </main>
   );
 }
