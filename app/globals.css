@@ -1,0 +1,37 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: Inter, Arial, sans-serif;
+  background: #0b1020;
+  color: #f8fafc;
+}
+main { max-width: 700px; margin: 0 auto; padding: 20px; }
+.card {
+  background: #111827;
+  border: 1px solid #1f2937;
+  border-radius: 14px;
+  padding: 16px;
+  margin-top: 14px;
+}
+input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #334155;
+  background: #0f172a;
+  color: #f8fafc;
+}
+button {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+button:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn-primary { background: #22c55e; color: #052e16; }
+.btn-secondary { background: #ef4444; color: #450a0a; }
+.btn-neutral { background: #334155; color: #e2e8f0; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.small { color: #94a3b8; font-size: 0.92rem; }
+.list { margin: 0; padding-left: 18px; }
