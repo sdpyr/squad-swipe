@@ -1,0 +1,10 @@
+{
+  "name": "SQUAD SWIPE",
+  "short_name": "SQUAD",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "description": "Group voting made easy",
+  "icons": []
+}
