@@ -1,5 +1,5 @@
 {
-  "name": "plan-mixer",
+  "name": "squad",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "firebase": "^11.0.2",
     "next": "15.0.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

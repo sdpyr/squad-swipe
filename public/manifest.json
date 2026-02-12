@@ -1,10 +1,10 @@
 {
-  "name": "PLAN MIXER",
-  "short_name": "PLAN",
+  "name": "SQUAD",
+  "short_name": "SQUAD",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0b1020",
   "theme_color": "#0b1020",
-  "description": "Instant group plan generator",
+  "description": "Decide, spin, and share with your group.",
   "icons": []
 }
